@@ -24,6 +24,9 @@ import pandas as pd
 import numpy as np
 import tensorflow as tf
 
+allsides = pd.read_csv("DATA/allsides.csv", sep=",")[["name", "bias"]]
+# print(np.count_nonzero(allsides["bias"] == "right-center")/3)
+
 # load in data
 data1 = pd.read_csv("DATA/articles1.csv", sep=",")[["id", "publication", "content"]]
 data2 = pd.read_csv("DATA/articles2.csv", sep=",")[["id", "publication", "content"]]
@@ -33,13 +36,34 @@ data3 = pd.read_csv("DATA/articles3.csv", sep=",")[["id", "publication", "conten
 idarray = data1["id"].append(data2["id"]).append(data3["id"])
 publicationarray = data1["publication"].append(data2["publication"]).append(data3["publication"])
 contentarray = data1["content"].append(data2["content"]).append(data3["content"])
+scorearray = []
 
 # create pandas dataframe
 df = pd.DataFrame(zip(idarray, publicationarray, contentarray), columns=['id', 'publication', 'content'])
 
 print(df)
 # transform data into numbers
-# left, right, left-center, right-center = +1 | center or allsides = -1
+
+
+# algorithm in use: left, right, left-center, right-center = +1 | center or allsides = -1
+# alternate option: left -2, leftcenter -1, allsides/center +0, right-center +1, right +2
+print(allsides["name"])
+print(publicationarray[0])
+print(allsides.index("New York Times"))
+for publication in publicationarray:
+    print(publication)
+    if df["publication"].str.find(publication):
+        score = allsides.index(publication)["bias"]
+        print(score)
+    else:
+        print("Warning: Publication", publication, "not in dataset")
+    if score == "left" or score == "right" or score == "left-center" or score == "right-center":
+        score = 1
+    else:
+        score = 0
+    scorearray.append(score)
+print(scorearray)
+
 
 
 def main():
