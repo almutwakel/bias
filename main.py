@@ -24,53 +24,83 @@ import pandas as pd
 import numpy as np
 import tensorflow as tf
 
-allsides = pd.read_csv("DATA/allsides.csv", sep=",")[["name", "bias"]]
-# print(np.count_nonzero(allsides["bias"] == "right-center")/3)
-
-# load in data
-data1 = pd.read_csv("DATA/articles1.csv", sep=",")[["id", "publication", "content"]]
-data2 = pd.read_csv("DATA/articles2.csv", sep=",")[["id", "publication", "content"]]
-data3 = pd.read_csv("DATA/articles3.csv", sep=",")[["id", "publication", "content"]]
-
-# concatenate columns
-idarray = data1["id"].append(data2["id"]).append(data3["id"])
-publicationarray = data1["publication"].append(data2["publication"]).append(data3["publication"])
-contentarray = data1["content"].append(data2["content"]).append(data3["content"])
-scorearray = []
-
-# create pandas dataframe
-df = pd.DataFrame(zip(idarray, publicationarray, contentarray), columns=['id', 'publication', 'content'])
-
-print(df)
-# transform data into numbers
-
-
-# algorithm in use: left, right, left-center, right-center = +1 | center or allsides = -1
-# alternate option: left -2, leftcenter -1, allsides/center +0, right-center +1, right +2
-print(allsides["name"])
-print(publicationarray[0])
-print(allsides.index("New York Times"))
-for publication in publicationarray:
-    print(publication)
-    if df["publication"].str.find(publication):
-        score = allsides.index(publication)["bias"]
-        print(score)
-    else:
-        print("Warning: Publication", publication, "not in dataset")
-    if score == "left" or score == "right" or score == "left-center" or score == "right-center":
-        score = 1
-    else:
-        score = 0
-    scorearray.append(score)
-print(scorearray)
+# variables to configure
+proportion = 0.1  # proportion of dataset to use for training
+scoring = {  # bias rating to give toward each alignment
+    #   algorithm in use: left, right, left-center, right-center = +1 | center or allsides = -1
+    #   alternate option: left -2, leftcenter -1, allsides/center +0, right-center +1, right +2
+    "left": 1,
+    "left-center": 1,
+    "center": -1,
+    "allsides": -1,
+    "right-center": 1,
+    "right": 1
+}
+distribution = {  # the distribution of each alignment used in the dataset
+    "left": 0.125,
+    "left-center": 0.125,
+    "center": 0.5,
+    "allsides": 0,
+    "right-center": 0.125,
+    "right": 0.125
+}
+# do not configure
+count = {
+    "left": 0,
+    "left-center": 0,
+    "center": 0,
+    "allsides": 0,
+    "right-center": 0,
+    "right": 0
+}
 
 
+def preprocess(proportion, scoring, distribution):
+    allsides = pd.read_csv("DATA/allsides.csv", sep=",")[["name", "bias"]]
+    # print(np.count_nonzero(allsides["bias"] == "right-center")/3)
 
-def main():
+    # load in data
+    data1 = pd.read_csv("DATA/articles1.csv", sep=",")[["id", "publication", "content"]]
+    data2 = pd.read_csv("DATA/articles2.csv", sep=",")[["id", "publication", "content"]]
+    data3 = pd.read_csv("DATA/articles3.csv", sep=",")[["id", "publication", "content"]]
+
+    # concatenate columns
+    df = pd.concat([data1, data2, data3], ignore_index=True)
+
+    # transform data
+    items = len(df)
+    scorearray = []
+    contentarray = []
+
+    for index, row in df.sample(frac=proportion).iterrows():
+        print(index, row)
+        publication = row['publication']
+        content = row['content']
+        print(publication, content)
+        try:
+            # check alignment of article
+            selection = allsides.loc[allsides["name"] == publication]
+            alignment = selection["bias"].values[0]
+
+            # check if it falls within desired distribution
+            if count[alignment] < items * distribution[alignment]:
+                score = scoring[alignment]
+                scorearray.append(score)
+                contentarray.append(content)
+
+        except KeyError:
+            print("Warning: Publication", publication, "not in dataset")
+    df_processed = pd.DataFrame(zip(scorearray, contentarray), columns=["score", "content"])
+    # proportion based
+    print(df_processed)
+    return df_processed
+
+
+def train(df):
     print("Initializing")
 
 
 # run
 if __name__ == '__main__':
-    main()
-
+    data = preprocess(proportion, scoring, distribution)
+    train(data)
