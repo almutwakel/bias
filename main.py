@@ -20,12 +20,16 @@
 #   143,000 unique articles
 #   15 different American news sources
 
+import json
 import pandas as pd
+import nltk
 import numpy as np
+import re
 import tensorflow as tf
 
 # variables to configure
-proportion = 0.1  # proportion of dataset to use for training
+# proportion = 0.1  # proportion of dataset to use for training
+cutoff = 10000   # use x most occurring words in bag
 scoring = {  # bias rating to give toward each alignment
     #   algorithm in use: left, right, left-center, right-center = +1 | center or allsides = -1
     #   alternate option: left -2, leftcenter -1, allsides/center +0, right-center +1, right +2
@@ -37,12 +41,13 @@ scoring = {  # bias rating to give toward each alignment
     "right": 1
 }
 distribution = {  # the distribution of each alignment used in the dataset
-    "left": 0.125,
-    "left-center": 0.125,
-    "center": 0.5,
+    #   algorithm in use: 1:1:4:0:1:1 ratio
+    "left": 1000,  # 0.125,
+    "left-center": 1000,  # 0.125,
+    "center": 4000,  # 0.5,
     "allsides": 0,
-    "right-center": 0.125,
-    "right": 0.125
+    "right-center": 1000,  # 0.125,
+    "right": 1000  # 0.125
 }
 # do not configure
 count = {
@@ -53,9 +58,17 @@ count = {
     "right-center": 0,
     "right": 0
 }
+delchars = ''.join(c for c in map(chr, range(256)) if not c.isalpha())
 
 
-def preprocess(proportion, scoring, distribution):
+def distribute(amount):
+    for alignment in ["left", "left-center", "center", "allsides", "right-center", "right"]:
+        if count[alignment] < distribution[alignment]:   # * amount * proportion
+            return True
+    return False
+
+
+def preprocess(scoring, distribution):
     allsides = pd.read_csv("DATA/allsides.csv", sep=",")[["name", "bias"]]
     # print(np.count_nonzero(allsides["bias"] == "right-center")/3)
 
@@ -72,35 +85,83 @@ def preprocess(proportion, scoring, distribution):
     scorearray = []
     contentarray = []
 
-    for index, row in df.sample(frac=proportion).iterrows():
-        print(index, row)
+    for index, row in df.sample(frac=1).iterrows():
+        # for index, row in df.groupby("score").apply(lambda x: x.sample(n=0.1*items)):
+        # print(index, row)
         publication = row['publication']
         content = row['content']
-        print(publication, content)
+        # while distribute(items):
+        # row = df.loc[i]
+        # publication = row['publication']
+        # content = row['content']
+        # print(publication, content)
         try:
             # check alignment of article
             selection = allsides.loc[allsides["name"] == publication]
             alignment = selection["bias"].values[0]
 
             # check if it falls within desired distribution
-            if count[alignment] < items * distribution[alignment]:
+            if count[alignment] < distribution[alignment]:  # * items * proportion
                 score = scoring[alignment]
                 scorearray.append(score)
                 contentarray.append(content)
-
+                count[alignment] += 1
+                if row["id"] % 10 == 0 and not distribute(items):
+                    break
         except KeyError:
             print("Warning: Publication", publication, "not in dataset")
     df_processed = pd.DataFrame(zip(scorearray, contentarray), columns=["score", "content"])
-    # proportion based
-    print(df_processed)
+    # print(df_processed)
+    print(np.count_nonzero(df_processed["score"] == 1), np.count_nonzero(df_processed["score"] == -1))
     return df_processed
 
 
-def train(df):
+def bagify(df):
     print("Initializing")
+    bag = {}
+    # with open("DATA/bagofwords.json") as file:
+    #    bag = json.load(file)
+    for index, row in df[["score", "content"]].iterrows():
+        score = row["score"]
+        content = row["content"]
+        for word in nltk.word_tokenize(content.lower().translate(delchars)):
+            if word in bag:
+                bag[word]["count"] += 1
+                bag[word]["value"] += score
+            else:
+                bag[word] = {"count": 1, "value": score, "weight": 1}
+
+    # filter rare usage counts
+    original_length = len(bag)
+    bag = {k: v for k, v in reversed(sorted(bag.items(), key=lambda item: item[1]["count"])[-cutoff:])}
+    print("Saved", cutoff, "most common words out of", original_length, "total words")
+
+    with open("DATA/bagofwords.json", "w") as file:
+        json.dump(bag, file)
+    return bag
+
+
+def train(bag):
+    # find
+    model = 0
+    return model
+
+
+def analyze():
+    # data insights from saved bag
+    with open("DATA/bagofwords.json") as file:
+        bag = json.load(file)
+    print("50 most common words:", {k: v for k, v in reversed(sorted(bag.items(), key=lambda word: word[1]["count"])[-50:])})
+    print("50 most biased words:", {k: v for k, v in reversed(sorted(bag.items(), key=lambda word: word[1]["value"])[-50:])})
+    print("50 most unbiased words:", {k: v for k, v in sorted(bag.items(), key=lambda word: word[1]["value"])[:50]})
+    print("50 most bias per usage", {k: v for k, v in reversed(sorted(bag.items(), key=lambda word: word[1]["value"]/word[1]["count"])[-50:])})
+    print("50 most unbiased per usage:", {k: v for k, v in sorted(bag.items(), key=lambda word: word[1]["value"]/word[1]["count"])[:50]})
+    print("50 most weighted words:", {k: v for k, v in reversed(sorted(bag.items(), key=lambda word: word[1]["weight"])[-50:])})
 
 
 # run
 if __name__ == '__main__':
-    data = preprocess(proportion, scoring, distribution)
-    train(data)
+    data = preprocess(scoring, distribution)
+    bagofwords = bagify(data)
+    analyze()
+    # train(bagofwords)
