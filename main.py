@@ -42,12 +42,12 @@ scoring = {  # bias rating to give toward each alignment
 }
 distribution = {  # the distribution of each alignment used in the dataset
     #   algorithm in use: 1:1:4:0:1:1 ratio
-    "left": 1000,  # 0.125,
-    "left-center": 1000,  # 0.125,
-    "center": 4000,  # 0.5,
+    "left": 8000,  # 0.125,
+    "left-center": 8000,  # 0.125,
+    "center": 32000,  # 0.5,
     "allsides": 0,
-    "right-center": 1000,  # 0.125,
-    "right": 1000  # 0.125
+    "right-center": 8000,  # 0.125,
+    "right": 8000  # 0.125
 }
 # do not configure
 count = {
@@ -61,7 +61,7 @@ count = {
 delchars = ''.join(c for c in map(chr, range(256)) if not c.isalpha())
 
 
-def distribute(amount):
+def distribute(amount=1):
     for alignment in ["left", "left-center", "center", "allsides", "right-center", "right"]:
         if count[alignment] < distribution[alignment]:   # * amount * proportion
             return True
@@ -119,13 +119,17 @@ def preprocess(scoring, distribution):
 def bagify(df):
     print("Initializing")
     bag = {}
-    # with open("DATA/bagofwords.json") as file:
+    # with open("DATA/bagofwords_sample.json") as file:
     #    bag = json.load(file)
     for index, row in df[["score", "content"]].iterrows():
         score = row["score"]
         content = row["content"]
-        for word in nltk.word_tokenize(content.lower().translate(delchars)):
-            if word in bag:
+        wordslist = nltk.word_tokenize(content)
+        for word in wordslist:
+            word = re.sub(r'[^a-zA-Z]', '', word).lower()
+            if len(word) == 0:
+                pass
+            elif word in bag:
                 bag[word]["count"] += 1
                 bag[word]["value"] += score
             else:
@@ -152,6 +156,7 @@ def analyze():
     with open("DATA/bagofwords.json") as file:
         bag = json.load(file)
     print("50 most common words:", {k: v for k, v in reversed(sorted(bag.items(), key=lambda word: word[1]["count"])[-50:])})
+    print("50 most uncommon words:", {k: v for k, v in sorted(bag.items(), key=lambda word: word[1]["count"])[:50]})
     print("50 most biased words:", {k: v for k, v in reversed(sorted(bag.items(), key=lambda word: word[1]["value"])[-50:])})
     print("50 most unbiased words:", {k: v for k, v in sorted(bag.items(), key=lambda word: word[1]["value"])[:50]})
     print("50 most bias per usage", {k: v for k, v in reversed(sorted(bag.items(), key=lambda word: word[1]["value"]/word[1]["count"])[-50:])})
@@ -161,7 +166,7 @@ def analyze():
 
 # run
 if __name__ == '__main__':
-    data = preprocess(scoring, distribution)
-    bagofwords = bagify(data)
+    # data = preprocess(scoring, distribution)
+    # bagofwords = bagify(data)
     analyze()
     # train(bagofwords)
