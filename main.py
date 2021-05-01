@@ -17,15 +17,16 @@
 
 # Article Dataset Information:
 #   639 MB of data
-#   143,000 unique articles
 #   15 different American news sources
+#   143,000 unique articles
+#   32,000 randomly selected articles at a time
 
 import json
 import pandas as pd
 import nltk
 import numpy as np
 import re
-import tensorflow as tf
+# import tensorflow as tf
 
 # variables to configure
 # proportion = 0.1  # proportion of dataset to use for training
@@ -132,7 +133,7 @@ def bagify(df):
         for word in wordslist:
             word = re.sub(r'[^a-zA-Z]', '', word).lower()
             if len(word) <= 1 or word in usedwords:
-                pass
+                continue
             elif word in bag:
                 bag[word]["count"] += 1
                 bag[word]["value"] += score
@@ -152,6 +153,8 @@ def bagify(df):
 
 def train():
     # find weights
+    with open("DATA/bagofwords.json") as file:
+        bag = json.load(file)
     model = 0
     return model
 
@@ -166,7 +169,36 @@ def analyze():
     print("50 most unbiased words:", {k: v for k, v in sorted(bag.items(), key=lambda word: word[1]["value"])[:50]})
     print("50 most bias per usage", {k: v for k, v in reversed(sorted(bag.items(), key=lambda word: word[1]["value"]/word[1]["count"])[-50:])})
     print("50 most unbiased per usage:", {k: v for k, v in sorted(bag.items(), key=lambda word: word[1]["value"]/word[1]["count"])[:50]})
-    print("50 most weighted words:", {k: v for k, v in reversed(sorted(bag.items(), key=lambda word: word[1]["weight"])[-50:])})
+    # print("50 most weigh3ted words:", {k: v for k, v in reversed(sorted(bag.items(), key=lambda word: word[1]["weight"])[-50:])})
+
+
+def analyze_list():
+    # data insights from saved bag
+    with open("DATA/bagofwords.json") as file:
+        bag = json.load(file)
+    common_words = {k: v for k, v in reversed(sorted(bag.items(), key=lambda word: word[1]["count"])[-50:])}
+    uncommon_words = {k: v for k, v in sorted(bag.items(), key=lambda word: word[1]["count"])[:50]}
+    biased = {k: v for k, v in reversed(sorted(bag.items(), key=lambda word: word[1]["value"])[-50:])}
+    unbiased = {k: v for k, v in sorted(bag.items(), key=lambda word: word[1]["value"])[:50]}
+    bpu = {k: v for k, v in reversed(sorted(bag.items(), key=lambda word: word[1]["value"]/word[1]["count"])[-50:])}
+    ubpu = {k: v for k, v in sorted(bag.items(), key=lambda word: word[1]["value"]/word[1]["count"])[:50]}
+    weight = {k: v for k, v in reversed(sorted(bag.items(), key=lambda word: word[1]["weight"])[-50:])}
+
+    print("\n50 Most Common words: ")
+    for pair in common_words.items():
+        print(pair)
+
+    print("\n50 Most Uncommon words: ")
+    for pair in uncommon_words.items():
+        print(pair)
+
+    print("\n50 Most Biased words: ")
+    for pair in biased.items():
+        print(pair)
+
+    print("\n50 Most Unbiased words: ")
+    for pair in unbiased.items():
+        print(pair)
 
 
 def predict(article):
@@ -178,16 +210,22 @@ def predict(article):
     wordslist = nltk.word_tokenize(article)
     usedwords = []
     for word in wordslist:
-        # print(word)
         word = re.sub(r'[^a-zA-Z]', '', word).lower()
-        if word in bagged_words.keys() and word not in usedwords and word not in {k: v for k, v in reversed(sorted(bag.items(), key=lambda word: word[1]["count"])[-50:])}.keys():
-            value += bag[word]["value"] * bag[word]["weight"] / bag[word]["count"]
-            count += 1
-            usedwords.append(word)
+        if word in bagged_words.keys() and word not in usedwords:  # and word not in {k: v for k, v in reversed(sorted(bag.items(), key=lambda word: word[1]["count"])[-50:])}.keys():
+            score = bag[word]["value"] / bag[word]["count"]
+            if abs(score) < 0.95:
+                value += score * bag[word]["weight"]
+                count += 1
+                usedwords.append(word)
     print("Total score:", value)
     print("Words analyzed:", count)
     try:
-        print("Final bias score:", value/count)
+        result = value / count
+        print("Final bias score:", result)
+        if result > 0:
+            print("Biased article")
+        else:
+            print("Unbiased article")
     except ArithmeticError:
         print("Unable to determine bias because no words were analyzed.")
 
@@ -198,7 +236,8 @@ if __name__ == '__main__':
     # bagofwords = bagify(data)
     # can use saved data for analysis and training:
     analyze()
+    # analyze_list()
     # train()
     with open("article_to_predict.txt", encoding="utf8") as file:
         predict_text = file.read().replace("\n", " ")
-    # predict(predict_text)
+    predict(predict_text)
