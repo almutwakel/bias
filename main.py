@@ -30,6 +30,7 @@ import tensorflow as tf
 # variables to configure
 # proportion = 0.1  # proportion of dataset to use for training
 cutoff = 10000   # use x most occurring words in bag
+articles = 32000   # total number of articles to use in training
 scoring = {  # bias rating to give toward each alignment
     #   algorithm in use: left, right, left-center, right-center = +1 | center or allsides = -1
     #   alternate option: left -2, leftcenter -1, allsides/center +0, right-center +1, right +2
@@ -42,12 +43,12 @@ scoring = {  # bias rating to give toward each alignment
 }
 distribution = {  # the distribution of each alignment used in the dataset
     #   algorithm in use: 1:1:4:0:1:1 ratio
-    "left": 8000,  # 0.125,
-    "left-center": 8000,  # 0.125,
-    "center": 32000,  # 0.5,
-    "allsides": 0,
-    "right-center": 8000,  # 0.125,
-    "right": 8000  # 0.125
+    "left": articles * 0.125,
+    "left-center": articles * 0.125,
+    "center": articles * 0.5,
+    "allsides": articles * 0,
+    "right-center": articles * 0.125,
+    "right": articles * 0.125
 }
 # do not configure
 count = {
@@ -111,6 +112,7 @@ def preprocess(scoring, distribution):
         except KeyError:
             print("Warning: Publication", publication, "not in dataset")
     df_processed = pd.DataFrame(zip(scorearray, contentarray), columns=["score", "content"])
+    print(count)
     # print(df_processed)
     print(np.count_nonzero(df_processed["score"] == 1), np.count_nonzero(df_processed["score"] == -1))
     return df_processed
@@ -125,15 +127,18 @@ def bagify(df):
         score = row["score"]
         content = row["content"]
         wordslist = nltk.word_tokenize(content)
+        # usedwords array to delete duplicates from same article
+        usedwords = []
         for word in wordslist:
             word = re.sub(r'[^a-zA-Z]', '', word).lower()
-            if len(word) == 0:
+            if len(word) == 0 or word in usedwords:
                 pass
             elif word in bag:
                 bag[word]["count"] += 1
                 bag[word]["value"] += score
             else:
                 bag[word] = {"count": 1, "value": score, "weight": 1}
+            usedwords.append(word)
 
     # filter rare usage counts
     original_length = len(bag)
@@ -145,8 +150,8 @@ def bagify(df):
     return bag
 
 
-def train(bag):
-    # find
+def train():
+    # find weights
     model = 0
     return model
 
@@ -164,9 +169,35 @@ def analyze():
     print("50 most weighted words:", {k: v for k, v in reversed(sorted(bag.items(), key=lambda word: word[1]["weight"])[-50:])})
 
 
+def predict(article):
+    with open("DATA/bagofwords.json") as file:
+        bag = json.load(file)
+    # bagged_words = {k: v for k, v in bag.items()}
+    value = 0
+    count = 0
+    wordslist = nltk.word_tokenize(article)
+    usedwords = []
+    for word in wordslist:
+        word = re.sub(r'[^a-zA-Z]', '', word).lower()
+        if word in bag.items() and word not in usedwords:
+            value += bag[word]["value"]
+            count += 1
+            usedwords.append(word)
+    print("Total score:", value)
+    print("Words analyzed:", count)
+    try:
+        print("Final bias score:", value/count)
+    except ArithmeticError:
+        print("Unable to determine bias because no words were analyzed.")
+
+
 # run
 if __name__ == '__main__':
     # data = preprocess(scoring, distribution)
     # bagofwords = bagify(data)
+    # can use saved data for analysis and training:
     analyze()
-    # train(bagofwords)
+    # train()
+    with open("article_to_predict.txt") as file:
+        predict_text = file.read().replace("\n", " ")
+    predict(predict_text)
