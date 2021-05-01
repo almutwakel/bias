@@ -131,7 +131,7 @@ def bagify(df):
         usedwords = []
         for word in wordslist:
             word = re.sub(r'[^a-zA-Z]', '', word).lower()
-            if len(word) == 0 or word in usedwords:
+            if len(word) <= 1 or word in usedwords:
                 pass
             elif word in bag:
                 bag[word]["count"] += 1
@@ -172,15 +172,16 @@ def analyze():
 def predict(article):
     with open("DATA/bagofwords.json") as file:
         bag = json.load(file)
-    # bagged_words = {k: v for k, v in bag.items()}
+    bagged_words = {k: v for k, v in bag.items()}
     value = 0
     count = 0
     wordslist = nltk.word_tokenize(article)
     usedwords = []
     for word in wordslist:
+        # print(word)
         word = re.sub(r'[^a-zA-Z]', '', word).lower()
-        if word in bag.items() and word not in usedwords:
-            value += bag[word]["value"]
+        if word in bagged_words.keys() and word not in usedwords and word not in {k: v for k, v in reversed(sorted(bag.items(), key=lambda word: word[1]["count"])[-50:])}.keys():
+            value += bag[word]["value"] * bag[word]["weight"] / bag[word]["count"]
             count += 1
             usedwords.append(word)
     print("Total score:", value)
@@ -198,6 +199,6 @@ if __name__ == '__main__':
     # can use saved data for analysis and training:
     analyze()
     # train()
-    with open("article_to_predict.txt") as file:
+    with open("article_to_predict.txt", encoding="utf8") as file:
         predict_text = file.read().replace("\n", " ")
-    predict(predict_text)
+    # predict(predict_text)
