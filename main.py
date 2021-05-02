@@ -71,6 +71,7 @@ def distribute(amount=1):
 
 
 def preprocess(scoring, distribution):
+    print("Initializing data processing")
     allsides = pd.read_csv("DATA/allsides.csv", sep=",")[["name", "bias"]]
     # print(np.count_nonzero(allsides["bias"] == "right-center")/3)
 
@@ -87,16 +88,10 @@ def preprocess(scoring, distribution):
     scorearray = []
     contentarray = []
 
-    for index, row in df.sample(frac=1).iterrows():
-        # for index, row in df.groupby("score").apply(lambda x: x.sample(n=0.1*items)):
-        # print(index, row)
+    df_raw = df.sample(frac=1)
+    for index, row in df_raw.iterrows():
         publication = row['publication']
         content = row['content']
-        # while distribute(items):
-        # row = df.loc[i]
-        # publication = row['publication']
-        # content = row['content']
-        # print(publication, content)
         try:
             # check alignment of article
             selection = allsides.loc[allsides["name"] == publication]
@@ -108,23 +103,26 @@ def preprocess(scoring, distribution):
                 scorearray.append(score)
                 contentarray.append(content)
                 count[alignment] += 1
-                if row["id"] % 10 == 0 and not distribute(items):
-                    break
+                if row["id"] % 100 == 0:
+                    print(100*sum(count.values())/sum(distribution.values()), "%", sep="")
+                    if not distribute(items):
+                        break
         except KeyError:
             print("Warning: Publication", publication, "not in dataset")
     df_processed = pd.DataFrame(zip(scorearray, contentarray), columns=["score", "content"])
     print(count)
-    # print(df_processed)
-    print(np.count_nonzero(df_processed["score"] == 1), np.count_nonzero(df_processed["score"] == -1))
     return df_processed
 
 
 def bagify(df):
-    print("Initializing")
+    print("Initializing bag algorithm")
     bag = {}
+    length = len(df.index)
     # with open("DATA/bagofwords_sample.json") as file:
     #    bag = json.load(file)
     for index, row in df[["score", "content"]].iterrows():
+        if index % 100 == 0:
+            print(index/length*100, "%", sep="")
         score = row["score"]
         content = row["content"]
         wordslist = nltk.word_tokenize(content)
@@ -138,7 +136,7 @@ def bagify(df):
                 bag[word]["count"] += 1
                 bag[word]["value"] += score
             else:
-                bag[word] = {"count": 1, "value": score, "weight": 1}
+                bag[word] = {"count": 1, "value": score}
             usedwords.append(word)
 
     # filter rare usage counts
@@ -151,7 +149,7 @@ def bagify(df):
     return bag
 
 
-def train():
+def train(df):
     # find weights
     with open("DATA/bagofwords.json") as file:
         bag = json.load(file)
@@ -182,7 +180,6 @@ def analyze_list():
     unbiased = {k: v for k, v in sorted(bag.items(), key=lambda word: word[1]["value"])[:50]}
     bpu = {k: v for k, v in reversed(sorted(bag.items(), key=lambda word: word[1]["value"]/word[1]["count"])[-50:])}
     ubpu = {k: v for k, v in sorted(bag.items(), key=lambda word: word[1]["value"]/word[1]["count"])[:50]}
-    weight = {k: v for k, v in reversed(sorted(bag.items(), key=lambda word: word[1]["weight"])[-50:])}
 
     print("\n50 Most Common words: ")
     for pair in common_words.items():
@@ -213,7 +210,7 @@ def predict(article):
         word = re.sub(r'[^a-zA-Z]', '', word).lower()
         if word in bagged_words.keys() and word not in usedwords:  # and word not in {k: v for k, v in reversed(sorted(bag.items(), key=lambda word: word[1]["count"])[-50:])}.keys():
             score = bag[word]["value"] / bag[word]["count"]
-            if abs(score) < 0.95:
+            if abs(score) < 0.97:
                 value += score * bag[word]["weight"]
                 count += 1
                 usedwords.append(word)
@@ -221,23 +218,43 @@ def predict(article):
     print("Words analyzed:", count)
     try:
         result = value / count
-        print("Final bias score:", result)
+        print("Bias score:", result)
         if result > 0:
             print("Biased article")
         else:
             print("Unbiased article")
+        return result
     except ArithmeticError:
         print("Unable to determine bias because no words were analyzed.")
+        return
 
 
-# run
+def test(df, length=None):
+    print("Initializing test")
+    if length is None:
+        length = len(df.index)
+    correct = 0
+    total = 0
+    for index, row in df[["score", "content"]].iterrows()[0:length]:
+        score = row["score"]
+        content = row["content"]
+        prediction = predict(content)
+        if (prediction > 0 and score > 0) or (prediction < 0 and score < 0):
+            correct += 1
+            total += 1
+        else:
+            total += 1
+    print("Accuracy:", total/correct)
+
+
 if __name__ == '__main__':
     # data = preprocess(scoring, distribution)
+    # data.to_csv("DATA/sample.csv", index=True)
+    data = pd.read_csv("DATA/sample.csv")
     # bagofwords = bagify(data)
-    # can use saved data for analysis and training:
-    analyze()
+    test(data, 100)
+    # analyze()
     # analyze_list()
-    # train()
-    with open("article_to_predict.txt", encoding="utf8") as file:
-        predict_text = file.read().replace("\n", " ")
-    predict(predict_text)
+    # with open("article_to_predict.txt", encoding="utf8") as file:
+    #    predict_text = file.read().replace("\n", " ")
+    # predict(predict_text)
