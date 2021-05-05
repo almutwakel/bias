@@ -167,7 +167,7 @@ def analyze():
     print("50 most unbiased words:", {k: v for k, v in sorted(bag.items(), key=lambda word: word[1]["value"])[:50]})
     print("50 most bias per usage", {k: v for k, v in reversed(sorted(bag.items(), key=lambda word: word[1]["value"]/word[1]["count"])[-50:])})
     print("50 most unbiased per usage:", {k: v for k, v in sorted(bag.items(), key=lambda word: word[1]["value"]/word[1]["count"])[:50]})
-    # print("50 most weigh3ted words:", {k: v for k, v in reversed(sorted(bag.items(), key=lambda word: word[1]["weight"])[-50:])})
+    # print("50 most weighted words:", {k: v for k, v in reversed(sorted(bag.items(), key=lambda word: word[1]["weight"])[-50:])})
 
 
 def analyze_list():
@@ -210,10 +210,9 @@ def predict(article):
         word = re.sub(r'[^a-zA-Z]', '', word).lower()
         if word in bagged_words.keys() and word not in usedwords:  # and word not in {k: v for k, v in reversed(sorted(bag.items(), key=lambda word: word[1]["count"])[-50:])}.keys():
             score = bag[word]["value"] / bag[word]["count"]
-            if abs(score) < 0.97:
-                value += score * bag[word]["weight"]
-                count += 1
-                usedwords.append(word)
+            value += score
+            count += 1
+            usedwords.append(word)
     print("Total score:", value)
     print("Words analyzed:", count)
     try:
@@ -235,7 +234,8 @@ def test(df, length=None):
         length = len(df.index)
     correct = 0
     total = 0
-    for index, row in df[["score", "content"]].iterrows()[0:length]:
+    sample = df[["score", "content"]].sample(frac=1)
+    for index, row in sample.iterrows():
         score = row["score"]
         content = row["content"]
         prediction = predict(content)
@@ -244,14 +244,16 @@ def test(df, length=None):
             total += 1
         else:
             total += 1
-    print("Accuracy:", total/correct)
+        if total >= length:
+            break
+    print("Accuracy: ", correct/total*100, "%", sep="")
 
 
 if __name__ == '__main__':
-    # data = preprocess(scoring, distribution)
-    # data.to_csv("DATA/sample.csv", index=True)
+    data = preprocess(scoring, distribution)
+    data.to_csv("DATA/sample.csv", index=True)
     data = pd.read_csv("DATA/sample.csv")
-    # bagofwords = bagify(data)
+    bagofwords = bagify(data)
     test(data, 100)
     # analyze()
     # analyze_list()
