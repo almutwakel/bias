@@ -32,15 +32,16 @@ import re
 # proportion = 0.1  # proportion of dataset to use for training
 cutoff = 10000   # use x most occurring words in bag
 articles = 32000   # total number of articles to use in training
+margin = 0.25
 scoring = {  # bias rating to give toward each alignment
     #   algorithm in use: left, right, left-center, right-center = +1 | center or allsides = -1
     #   alternate option: left -2, leftcenter -1, allsides/center +0, right-center +1, right +2
-    "left": 1,
-    "left-center": 1,
-    "center": -1,
-    "allsides": -1,
+    "left": -2,
+    "left-center": -1,
+    "center": 0,
+    "allsides": 0,
     "right-center": 1,
-    "right": 1
+    "right": 2
 }
 distribution = {  # the distribution of each alignment used in the dataset
     #   algorithm in use: 1:1:4:0:1:1 ratio
@@ -118,7 +119,7 @@ def bagify(df):
     print("Initializing bag algorithm")
     bag = {}
     length = len(df.index)
-    # with open("DATA/bagofwords_sample.json") as file:
+    # with open("DATA/bagofwords_lean.json") as file:
     #    bag = json.load(file)
     for index, row in df[["score", "content"]].iterrows():
         if index % 100 == 0:
@@ -144,14 +145,14 @@ def bagify(df):
     bag = {k: v for k, v in reversed(sorted(bag.items(), key=lambda item: item[1]["count"])[-cutoff:])}
     print("Saved", cutoff, "most common words out of", original_length, "total words")
 
-    with open("DATA/bagofwords.json", "w") as file:
+    with open("DATA/bagofwords_lean.json", "w") as file:
         json.dump(bag, file)
     return bag
 
 
 def train(df):
     # find weights
-    with open("DATA/bagofwords.json") as file:
+    with open("DATA/bagofwords_lean.json") as file:
         bag = json.load(file)
     model = 0
     return model
@@ -159,7 +160,7 @@ def train(df):
 
 def analyze():
     # data insights from saved bag
-    with open("DATA/bagofwords.json") as file:
+    with open("DATA/bagofwords_lean.json") as file:
         bag = json.load(file)
     print("50 most common words:", {k: v for k, v in reversed(sorted(bag.items(), key=lambda word: word[1]["count"])[-50:])})
     print("50 most uncommon words:", {k: v for k, v in sorted(bag.items(), key=lambda word: word[1]["count"])[:50]})
@@ -167,12 +168,12 @@ def analyze():
     print("50 most unbiased words:", {k: v for k, v in sorted(bag.items(), key=lambda word: word[1]["value"])[:50]})
     print("50 most bias per usage", {k: v for k, v in reversed(sorted(bag.items(), key=lambda word: word[1]["value"]/word[1]["count"])[-50:])})
     print("50 most unbiased per usage:", {k: v for k, v in sorted(bag.items(), key=lambda word: word[1]["value"]/word[1]["count"])[:50]})
-    # print("50 most weigh3ted words:", {k: v for k, v in reversed(sorted(bag.items(), key=lambda word: word[1]["weight"])[-50:])})
+    # print("50 most weighed words:", {k: v for k, v in reversed(sorted(bag.items(), key=lambda word: word[1]["weight"])[-50:])})
 
 
 def analyze_list():
     # data insights from saved bag
-    with open("DATA/bagofwords.json") as file:
+    with open("DATA/bagofwords_lean.json") as file:
         bag = json.load(file)
     common_words = {k: v for k, v in reversed(sorted(bag.items(), key=lambda word: word[1]["count"])[-50:])}
     uncommon_words = {k: v for k, v in sorted(bag.items(), key=lambda word: word[1]["count"])[:50]}
@@ -199,34 +200,38 @@ def analyze_list():
 
 
 def predict(article):
-    with open("DATA/bagofwords.json") as file:
+    with open("DATA/bagofwords_lean.json") as file:
         bag = json.load(file)
     bagged_words = {k: v for k, v in bag.items()}
+    # common = {k: v for k, v in reversed(sorted(bag.items(), key=lambda word: word[1]["count"])[-50:])}.keys()
     value = 0
     count = 0
     wordslist = nltk.word_tokenize(article)
     usedwords = []
     for word in wordslist:
         word = re.sub(r'[^a-zA-Z]', '', word).lower()
-        if word in bagged_words.keys() and word not in usedwords:  # and word not in {k: v for k, v in reversed(sorted(bag.items(), key=lambda word: word[1]["count"])[-50:])}.keys():
+        if word in bagged_words.keys() and word not in usedwords:  # and word not in common:
             score = bag[word]["value"] / bag[word]["count"]
-            if abs(score) < 0.97:
-                value += score * bag[word]["weight"]
-                count += 1
-                usedwords.append(word)
+            value += score
+            count += 1
+            usedwords.append(word)
     print("Total score:", value)
     print("Words analyzed:", count)
     try:
         result = value / count
         print("Bias score:", result)
-        if result > 0:
-            print("Biased article")
+        if abs(result) > margin:
+            print("Biased article:")
+            if result > 0:
+                print("Right-leaning")
+            else:
+                print("Left-leaning")
         else:
             print("Unbiased article")
         return result
     except ArithmeticError:
         print("Unable to determine bias because no words were analyzed.")
-        return
+        return -3
 
 
 def test(df, length=None):
@@ -235,26 +240,30 @@ def test(df, length=None):
         length = len(df.index)
     correct = 0
     total = 0
-    for index, row in df[["score", "content"]].iterrows()[0:length]:
+    sample = df[["score", "content"]].sample(frac=1)
+    for index, row in sample.iterrows():
         score = row["score"]
         content = row["content"]
         prediction = predict(content)
-        if (prediction > 0 and score > 0) or (prediction < 0 and score < 0):
+        if (abs(prediction) > margin and 0 < abs(score) <= 2) or (abs(prediction) < margin and score == 0):
             correct += 1
             total += 1
         else:
             total += 1
-    print("Accuracy:", total/correct)
+        if total >= length:
+            break
+    print("Accuracy: ", correct/total*100, "%", sep="")
 
 
 if __name__ == '__main__':
     # data = preprocess(scoring, distribution)
-    # data.to_csv("DATA/sample.csv", index=True)
-    data = pd.read_csv("DATA/sample.csv")
+    # data.to_csv("DATA/sample_lean.csv", index=True)
+    data = pd.read_csv("DATA/sample_lean.csv")
     # bagofwords = bagify(data)
-    test(data, 100)
-    # analyze()
+
     # analyze_list()
+    test(data, 100)
+    analyze()
     # with open("article_to_predict.txt", encoding="utf8") as file:
     #    predict_text = file.read().replace("\n", " ")
     # predict(predict_text)
